@@ -1,61 +1,140 @@
-import express from "express";
-import Course from "../models/Course";
-import User from "../models/User";
-
+const express = require("express");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+const Course = require("../models/Course");
 const router = express.Router();
 
-// Admin middleware
-export const isAdmin = async (req, res, next) => {
+require("dotenv").config();
+const SECRET_KEY = process.env.JWT_SECRET || "your_jwt_secret_key"; // Replace with a secure key in production
+
+// Middleware to verify JWT and extract user
+const authMiddleware = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "No token provided" });
+
   try {
-    const userId = req.body.userId; // Assume userId is sent in request
-    const user = await User.findById(userId);
-
-    if (!user || !user.isAdmin) {
-      return res.status(403).json({ message: "Access denied. Admins only." });
-    }
-
-    next(); // Proceed if user is an admin
+    const decoded = jwt.verify(token, SECRET_KEY); // Use your JWT_SECRET
+    req.user = decoded; // { id, role } from token
+    next();
   } catch (error) {
-    res.status(500).json({ message: "Server error", error });
+    res.status(401).json({ message: "Invalid token" });
   }
 };
 
-// Register user for a course
-router.post("/courses/:courseId/register", async (req, res) => {
-  const { userId } = req.body;
-  const { courseId } = req.params;
+// Admin-only middleware
+const adminMiddleware = async (req, res, next) => {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  next();
+};
 
+// Get all users (admin-only)
+router.get("/", authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const course = await Course.findById(courseId);
-    const user = await User.findById(userId);
-
-    if (!course || !user) {
-      return res.status(404).json({ message: "User or Course not found" });
-    }
-
-    // Check if user is already registered
-    if (course.RegisteredUsers.includes(userId)) {
-      return res.status(400).json({ message: "User already registered" });
-    }
-
-    // Check if course is full
-    if (course.TotalRegistered >= course.Capacity) {
-      return res.status(400).json({ message: "Course is full" });
-    }
-
-    // Add user to course
-    course.RegisteredUsers.push(userId);
-    course.TotalRegistered += 1;
-    await course.save();
-
-    // Add course to user's list
-    user.registeredCourses.push(courseId);
-    await user.save();
-
-    res.status(200).json({ message: "User registered successfully", course });
+    const users = await User.find().select("-password"); // Exclude password field
+    res.json(users);
   } catch (error) {
-    res.status(500).json({ message: "Server error", error });
+    console.error("Error fetching users:", error);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-export default router;
+// Get user details and registered courses (admin-only)
+router.get("/:userId", authMiddleware, adminMiddleware, async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const user = await User.findById(userId).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const registeredCourses = await Course.find({ RegisteredUsers: userId });
+    res.json({ user, registeredCourses });
+  } catch (error) {
+    console.error("Error fetching user details:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Register a user
+router.post("/register", async (req, res) => {
+  const { username, email, password, role } = req.body;
+
+  try {
+    // Check for existing username
+    const existingUsername = await User.findOne({ username });
+    if (existingUsername) {
+      return res.status(400).json({ message: "Username already taken" });
+    }
+
+    // Check for existing email
+    const existingEmail = await User.findOne({ email });
+    if (existingEmail) {
+      return res.status(400).json({ message: "Email already taken" });
+    }
+
+    // Proceed with registration
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = new User({ username, email, password: hashedPassword, role });
+    await user.save();
+
+    // Auto-login after registration
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET || "your_jwt_secret_key",
+      { expiresIn: "1h" }
+    );
+    res.status(201).json({ message: "User registered successfully", token });
+  } catch (error) {
+    console.error("Registration error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Login
+router.post("/login", async (req, res) => {
+  const { username, password } = req.body;
+
+  try {
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const isValid = await bcrypt.compare(password, user.password);
+    if (!isValid) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const token = jwt.sign({ id: user._id, role: user.role }, SECRET_KEY, {
+      expiresIn: "1h",
+    });
+    res.json({ message: "Logged in", token, role: user.role });
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Role-based dashboard routes
+router.get("/admin/dashboard", adminMiddleware, (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+  res.json({ message: "Welcome, Admin!" });
+});
+
+router.get("/instructor/dashboard", adminMiddleware, (req, res) => {
+  if (req.user.role !== "instructor") {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+  res.json({ message: "Welcome, Instructor!" });
+});
+
+router.get("/student/dashboard", adminMiddleware, (req, res) => {
+  if (req.user.role !== "student") {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+  res.json({ message: "Welcome, Student!" });
+});
+
+module.exports = router;

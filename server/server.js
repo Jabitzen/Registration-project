@@ -4,6 +4,7 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const siteRoutes = require("./routes/siteRoutes");
 const courseRoutes = require("./routes/courseRoutes");
+const userRoutes = require("./routes/userRoutes");
 
 // Initialize Express app
 const app = express();
@@ -25,6 +26,7 @@ mongoose
 // Routes
 app.use("/sites", siteRoutes);
 app.use("/courses", courseRoutes);
+app.use("/users", userRoutes);
 // Start the server
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);

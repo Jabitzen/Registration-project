@@ -2,39 +2,40 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 interface Course {
   _id?: string;
-  CourseID: String;
-  Title: String;
-  Description: String;
-  Prerequisites: [String];
-  InstructorAssignments: [String];
-  FacilityUsage: String;
-  ConsumablesUsage: String;
-  ClassName: String;
-  Location: String;
-  Capacity: String;
-  BringList: String;
-  Credits: String;
-  Certificates: [String];
-  Status: String;
-  Duration: String;
-  DateFrom: Date;
-  DateTo: Date;
-  Repeats: Boolean;
-  Until: Date;
-  NumberOfTimes: String;
-  TimeFrom: String;
-  TimeTo: String;
-  TotalRegistered: String;
-  TotalAttended: String;
-  InventoryItemUsed: String;
-  Amount: String;
-  InstructorPayment: String;
-  InstructorTravel: String;
-  FacilityCostAssignment: String;
-  TotalClassRevenue: String;
-  TotalClassCost: String;
-  TotalClassGrossProfit: String;
-  PostToStateCLEE: Boolean;
+  CourseID: string; // Changed to lowercase 'string' for TypeScript convention
+  Title: string;
+  Description: string;
+  Prerequisites: string[]; // Array syntax corrected
+  InstructorAssignments: string[];
+  FacilityUsage: string;
+  ConsumablesUsage: string;
+  ClassName: string;
+  Location: string;
+  Capacity: string;
+  BringList: string;
+  Credits: string;
+  Certificates: string[];
+  Status: string;
+  Duration: string;
+  DateFrom: Date | string; // Allow string since API might return it
+  DateTo: Date | string;
+  Repeats: boolean; // Changed to lowercase 'boolean'
+  Until: Date | string;
+  NumberOfTimes: string;
+  TimeFrom: string;
+  TimeTo: string;
+  TotalRegistered: string;
+  RegisteredUsers: string[]; // Added to match MongoDB schema
+  TotalAttended: string;
+  InventoryItemUsed: string;
+  Amount: string;
+  InstructorPayment: string;
+  InstructorTravel: string;
+  FacilityCostAssignment: string;
+  TotalClassRevenue: string;
+  TotalClassCost: string;
+  TotalClassGrossProfit: string;
+  PostToStateCLEE: boolean;
 }
 
 interface CoursesState {
@@ -60,8 +61,17 @@ const coursesSlice = createSlice({
         (course) => course._id !== action.payload
       );
     },
+    updateCourse: (state, action: PayloadAction<Course>) => {
+      const index = state.courses.findIndex(
+        (course) => course._id === action.payload._id
+      );
+      if (index !== -1) {
+        state.courses[index] = action.payload;
+      }
+    },
   },
 });
 
-export const { setCourses, addCourse, removeCourse } = coursesSlice.actions;
+export const { setCourses, addCourse, removeCourse, updateCourse } =
+  coursesSlice.actions;
 export default coursesSlice.reducer;
