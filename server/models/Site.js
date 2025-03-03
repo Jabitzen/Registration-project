@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 // Define the schema for a Site
 const siteSchema = new mongoose.Schema({
-  SiteID: { type: String, required: true },
+  SiteID: { type: String, required: true, unique: true },
   ParentName: { type: String, required: true },
   BuildingSiteName: { type: String, required: true },
   SiteType: { type: String, required: true },
@@ -18,6 +18,7 @@ const siteSchema = new mongoose.Schema({
   RentalRequirements: String,
   SignatureURL: String,
   ImageURL: String,
+  locations: [{ type: mongoose.Schema.Types.ObjectId, ref: "Location" }],
 });
 
 const Site = mongoose.model("Site", siteSchema);

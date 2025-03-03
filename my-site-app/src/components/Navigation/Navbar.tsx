@@ -1,5 +1,5 @@
 import { Menu, User, LogOut } from "lucide-react";
-import { Dialog, DialogContent, DialogTrigger } from "../ui/dialogue";
+import { Dialog, DialogContent, DialogTrigger } from "../ui/dialog";
 import { Link, useNavigate } from "react-router-dom";
 import { Outlet } from "react-router-dom";
 import { useState, useEffect } from "react";

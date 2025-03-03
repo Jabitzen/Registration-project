@@ -1,9 +1,18 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { jwtDecode } from "jwt-decode"; // ES module import for TypeScript
 
 interface SignUpProps {
   onSuccess?: () => void; // Callback to close the modal
+}
+
+interface JwtPayload {
+  id: string;
+  role: string;
+  name: string; // Adjust based on your token payload
+  iat?: number;
+  exp?: number;
 }
 
 const SignUp: React.FC<SignUpProps> = ({ onSuccess }) => {
@@ -18,12 +27,15 @@ const SignUp: React.FC<SignUpProps> = ({ onSuccess }) => {
     e.preventDefault();
     try {
       // Step 1: Register the user
-      await axios.post(`${import.meta.env.VITE_API_URL}/register`, {
-        username,
-        email,
-        password,
-        role: "student",
-      });
+      const registerResponse = await axios.post(
+        `${import.meta.env.VITE_API_URL}/register`,
+        {
+          username,
+          email,
+          password,
+          role: "student",
+        }
+      );
 
       // Step 2: Automatically log in the user
       const loginResponse = await axios.post(
@@ -34,9 +46,21 @@ const SignUp: React.FC<SignUpProps> = ({ onSuccess }) => {
         }
       );
 
-      // Step 3: Store token and role, then redirect
+      // Step 3: Clear and save the new token and role to local storage
+      localStorage.removeItem("token"); // Clear any old token
+      localStorage.removeItem("role"); // Clear any old role
+      localStorage.removeItem("name"); // Clear any old password
       localStorage.setItem("token", loginResponse.data.token);
       localStorage.setItem("role", loginResponse.data.role);
+      localStorage.setItem("name", loginResponse.data.name);
+
+      // Debug: Log the new token to verify
+      console.log("New token saved to localStorage:", loginResponse.data.token);
+
+      // Decode the token to verify name is included
+      const decodedToken: JwtPayload = jwtDecode(loginResponse.data.token);
+      console.log("Decoded token:", decodedToken); // Should show { id, role, name }
+
       setSuccess("Registration and login successful! Redirecting...");
       setError("");
       setTimeout(() => {
@@ -44,6 +68,7 @@ const SignUp: React.FC<SignUpProps> = ({ onSuccess }) => {
         if (onSuccess) onSuccess(); // Close the modal
       }, 1000);
     } catch (err: any) {
+      console.error("Registration or login error:", err);
       setError(err.response?.data?.error || "Registration failed");
       setSuccess("");
     }

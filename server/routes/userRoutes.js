@@ -15,7 +15,15 @@ const authMiddleware = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, SECRET_KEY); // Use your JWT_SECRET
-    req.user = decoded; // { id, role } from token
+    // Fetch the full user data to get the name (assuming name or username exists)
+    const user = await User.findById(decoded.id).select("name username role"); // Adjust fields as needed
+    if (!user) return res.status(401).json({ message: "User not found" });
+
+    req.user = {
+      id: decoded.id,
+      role: decoded.role,
+      username: user.username || "Unknown User", // Use name or username, fallback to "Unknown User"
+    };
     next();
   } catch (error) {
     res.status(401).json({ message: "Invalid token" });
@@ -75,12 +83,17 @@ router.post("/register", async (req, res) => {
 
     // Proceed with registration
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ username, email, password: hashedPassword, role });
+    const user = new User({
+      username,
+      email,
+      password: hashedPassword,
+      role,
+    });
     await user.save();
 
     // Auto-login after registration
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id, role: user.role, name: user.username },
       process.env.JWT_SECRET || "your_jwt_secret_key",
       { expiresIn: "1h" }
     );
@@ -91,12 +104,14 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// Login
+// Login (ensure token includes name)
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
 
   try {
-    const user = await User.findOne({ username });
+    const user = await User.findOne({ username }).select(
+      "password role username"
+    ); // Include name
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
@@ -106,10 +121,17 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ id: user._id, role: user.role }, SECRET_KEY, {
-      expiresIn: "1h",
+    const token = jwt.sign(
+      { id: user._id, role: user.role, name: user.username },
+      SECRET_KEY,
+      { expiresIn: "1h" }
+    );
+    res.json({
+      message: "Logged in",
+      token,
+      role: user.role,
+      name: user.username,
     });
-    res.json({ message: "Logged in", token, role: user.role });
   } catch (err) {
     res.status(500).json({ error: "Server error" });
   }
@@ -138,3 +160,4 @@ router.get("/student/dashboard", adminMiddleware, (req, res) => {
 });
 
 module.exports = router;
+module.exports.authMiddleware = authMiddleware; // Ensure this line exists

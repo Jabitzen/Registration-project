@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 interface Site {
+  _id?: string; // Added _id to match MongoDB and frontend usage
   SiteID: string;
   ParentName: string;
   BuildingSiteName: string;
@@ -33,7 +34,11 @@ const sitesSlice = createSlice({
     setSitesRedux: (state, action: PayloadAction<Site[]>) => {
       state.sites = action.payload;
     },
+    removeSite: (state, action: PayloadAction<string>) => {
+      state.sites = state.sites.filter((site) => site._id !== action.payload);
+    },
   },
 });
-export const { setSitesRedux } = sitesSlice.actions;
+
+export const { setSitesRedux, removeSite } = sitesSlice.actions;
 export default sitesSlice.reducer;

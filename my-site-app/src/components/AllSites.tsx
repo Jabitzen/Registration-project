@@ -1,19 +1,19 @@
 import { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { RootState } from "../store/store"; // Import RootState to type the selector
-import { setSitesRedux } from "../store/sitesSlice"; // Import fetchSites action
+import { RootState, AppDispatch } from "../store/store";
+import { setSitesRedux, removeSite } from "../store/sitesSlice"; // Updated import
 import axios from "axios";
+import { Button } from "../components/ui/button";
+import { Label } from "../components/ui/label";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Label } from "../components/ui/label";
 import { useNavigate } from "react-router-dom";
+import { jwtDecode } from "jwt-decode";
 
-// Site interface (for type-checking)
 interface Site {
   _id?: string;
   SiteID: string;
@@ -34,18 +34,36 @@ interface Site {
   ImageURL: string;
 }
 
-export default function LandingPage() {
-  const navigate = useNavigate();
-  const dispatch = useDispatch(); // UseDispatch to dispatch actions to the Redux store
-  const reduxState = useSelector((state: RootState) => state.sites.sites);
-  const [sites, setSites] = useState<Site[]>([]); // State to store all sites
-  const [message, setMessage] = useState<string>("");
-  console.log(reduxState);
+interface DecodedToken {
+  id: string;
+  role: string;
+  exp: number;
+}
 
-  // Fetch all sites when the component mounts
+export default function AllSites() {
+  const navigate = useNavigate();
+  const dispatch = useDispatch<AppDispatch>();
+  const reduxSites = useSelector((state: RootState) => state.sites.sites);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [message, setMessage] = useState<string>("");
+  const [token, setToken] = useState(localStorage.getItem("token"));
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const newToken = localStorage.getItem("token");
+      setToken(newToken);
+    };
+    window.addEventListener("storage", handleStorageChange);
+    handleStorageChange();
+    return () => window.removeEventListener("storage", handleStorageChange);
+  }, []);
+
+  const decodedToken = token ? jwtDecode<DecodedToken>(token) : null;
+  const userRole = decodedToken?.role || "";
+
   useEffect(() => {
     axios
-      .get("http://localhost:5000/sites") // Modify API URL to fetch all sites
+      .get("http://localhost:5000/sites")
       .then((response) => {
         setSites(response.data);
         dispatch(setSitesRedux(response.data));
@@ -54,17 +72,13 @@ export default function LandingPage() {
         console.error("Error fetching sites:", error);
         setMessage("Failed to fetch sites.");
       });
-  }, []);
+  }, [dispatch]);
 
-  // Delete site function
   const handleDelete = async (siteId: string) => {
     try {
-      // Sending DELETE request to the backend
-      const response = await axios.delete(
-        `http://localhost:5000/sites/${siteId}`
-      );
-      // If the delete is successful, remove the site from the state
+      await axios.delete(`http://localhost:5000/sites/${siteId}`);
       setSites(sites.filter((site) => site._id !== siteId));
+      dispatch(removeSite(siteId)); // Update Redux store
       setMessage("Site deleted successfully!");
     } catch (error) {
       console.error("Error deleting site:", error);
@@ -77,7 +91,6 @@ export default function LandingPage() {
       {message && <p className="text-center text-red-600">{message}</p>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Map over the sites and display them */}
         {sites.map((site) => (
           <Card
             key={site._id}
@@ -109,9 +122,7 @@ export default function LandingPage() {
                     <Label>Address</Label>
                     <p>{site.FullStreetAddress}</p>
                     {site.SubAddress && <p>{site.SubAddress}</p>}
-                    <p>
-                      {site.City}, {site.State} {site.PostCode}
-                    </p>
+                    <p>{`${site.City}, ${site.State} ${site.PostCode}`}</p>
                   </div>
                   <div>
                     <Label>Directions</Label>
@@ -126,6 +137,10 @@ export default function LandingPage() {
                     <p>{site.SpecialInstructions}</p>
                   </div>
                   <div>
+                    <Label>Rental Requirements</Label>
+                    <p>{site.RentalRequirements}</p>
+                  </div>
+                  <div>
                     <Label>Signature URL</Label>
                     <p>{site.SignatureURL}</p>
                   </div>
@@ -135,20 +150,29 @@ export default function LandingPage() {
                   </div>
                 </div>
 
-                {/* Update and Delete buttons */}
-                <div className="flex justify-between mt-4">
-                  <Button
-                    className="w-1/2 mr-2 bg-blue-500 border:transparent border-2 hover:bg-white hover:border-blue-500 hover:text-blue-500"
-                    onClick={() => navigate(`Update/${site.SiteID}`)} // Navigate to the update page
-                  >
-                    Update Site
-                  </Button>
-                  <Button
-                    className="w-1/2 bg-red-500 border:transparent border-2 hover:bg-white hover:border-red-500 hover:text-red-500"
-                    onClick={() => handleDelete(site._id!)} // Trigger the delete for this site
-                  >
-                    Delete Site
-                  </Button>
+                <div className="flex justify-between mt-4 gap-2">
+                  {userRole === "admin" && (
+                    <>
+                      <Button
+                        className="flex-1 bg-blue-500 border-transparent border-2 hover:bg-white hover:border-blue-500 hover:text-blue-500"
+                        onClick={() => navigate(`/sites/${site._id}`)}
+                      >
+                        Details
+                      </Button>
+                      <Button
+                        className="flex-1 bg-blue-500 border-transparent border-2 hover:bg-white hover:border-blue-500 hover:text-blue-500"
+                        onClick={() => navigate(`Update/${site._id}`)}
+                      >
+                        Update Site
+                      </Button>
+                      <Button
+                        className="flex-1 bg-red-500 border-transparent border-2 hover:bg-white hover:border-red-500 hover:text-red-500"
+                        onClick={() => handleDelete(site._id!)}
+                      >
+                        Delete Site
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </CardContent>

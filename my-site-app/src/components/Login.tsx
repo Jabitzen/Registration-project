@@ -3,7 +3,7 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
 interface LoginProps {
-  onSuccess?: () => void; // Callback to close the modal
+  onSuccess?: () => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onSuccess }) => {
@@ -22,10 +22,15 @@ const Login: React.FC<LoginProps> = ({ onSuccess }) => {
           password,
         }
       );
+      console.log(response.data);
+      localStorage.removeItem("token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("name");
       localStorage.setItem("token", response.data.token);
       localStorage.setItem("role", response.data.role);
+      localStorage.setItem("name", response.data.name);
       navigate("/dashboard");
-      if (onSuccess) onSuccess(); // Close the modal on success
+      if (onSuccess) onSuccess();
     } catch (err) {
       setError("Invalid credentials");
     }

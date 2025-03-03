@@ -47,10 +47,11 @@ export default function UpdateSite() {
       .get(`http://localhost:5000/sites/${siteId}`)
       .then((response) => {
         // Check if response is an array and has at least one element
-        if (Array.isArray(response.data) && response.data.length > 0) {
-          setSite(response.data[0]); // Set the first object from the array
+        console.log(response);
+        if (response.data) {
+          setSite(response.data); // Set the first object from the array
         } else {
-          console.error("API returned an empty array!");
+          console.error("API returned no data");
         }
       })
       .catch((error) => {
