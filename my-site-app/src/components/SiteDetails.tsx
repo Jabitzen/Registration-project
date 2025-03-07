@@ -96,6 +96,7 @@ export default function SiteDetails() {
   const { siteId } = useParams<{ siteId: string }>();
   const navigate = useNavigate();
   const [site, setSite] = useState<Site | null>(null);
+  console.log("SITE", site);
   const [newLocation, setNewLocation] = useState<Location>({
     name: "",
     locationType: "",
@@ -381,7 +382,7 @@ export default function SiteDetails() {
               <strong>Image URL:</strong> {site.ImageURL || "N/A"}
             </p>
             <Button
-              onClick={() => navigate(`/calendar/${site._id}`)}
+              onClick={() => navigate(`/calendar`)}
               className="mt-4 w-full"
             >
               View Reservation Calendar

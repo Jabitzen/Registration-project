@@ -82,6 +82,14 @@ export default function Navbar() {
                         Create Course
                       </Link>
                     </li>
+                    <li>
+                      <Link
+                        to="/calendar"
+                        className="block p-2 text-lg font-semibold hover:bg-gray-700 rounded"
+                      >
+                        Create A Reservation
+                      </Link>
+                    </li>
                     {userRole === "admin" && (
                       <>
                         <li>

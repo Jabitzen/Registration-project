@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { Dialog, DialogContent } from "../../components/ui/dialog"; // Using only Dialog and DialogContent
+import { jwtDecode } from "jwt-decode"; // For decoding JWT tokens
 
 interface Site {
   _id: string;
@@ -55,6 +56,12 @@ interface Availability {
   endDateTime: string;
   status: "booked";
   bookedBy: string;
+}
+
+interface DecodedToken {
+  id: string; // Adjust this based on your JWT payload structure
+  name: string;
+  // Add other fields as needed (e.g., role, exp)
 }
 
 type NavigateAction = "PREV" | "NEXT" | "TODAY" | "DATE";
@@ -93,7 +100,27 @@ export default function CalendarPage() {
     format(startOfDay(new Date()), "yyyy-MM-dd") // Initialize with today in local time
   ); // Initialize with today
   const [isReservationDialogOpen, setIsReservationDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false); // New state for deletion dialog
   const [selectedSlot, setSelectedSlot] = useState<any>(null);
+  const [selectedBookingToDelete, setSelectedBookingToDelete] =
+    useState<any>(null); // New state for the booking to delete
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null); // Store the current user's ID
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null); // Store the current user's name
+
+  // Decode JWT token to get user ID and name on mount
+  useEffect(() => {
+    const token = getToken();
+    if (token) {
+      try {
+        const decoded: DecodedToken = jwtDecode(token);
+        console.log("Decoded token:", decoded);
+        setCurrentUserId(decoded.id); // Adjust this based on your JWT payload structure (e.g., 'sub' or 'userId')
+        setCurrentUserName(decoded.name); // Adjust this based on your JWT payload structure (e.g., 'name' or 'fullName')
+      } catch (error) {
+        console.error("Error decoding token:", error);
+      }
+    }
+  }, []);
 
   const onNavigate = (newDateOrAction: Date | NavigateAction) => {
     if (typeof newDateOrAction === "string") {
@@ -250,11 +277,12 @@ export default function CalendarPage() {
     const bookedEvents = selectedLocs.flatMap((loc) =>
       loc.availability.map((avail) => ({
         id: avail._id,
-        title: `Booked by ${avail.bookedBy} at ${loc.name}`,
+        title: `Booked by ${currentUserName || "Unknown User"} at ${loc.name}`, // Use currentUserName for booked events
         start: roundTo15Minutes(new Date(avail.startDateTime)),
         end: roundTo15Minutes(new Date(avail.endDateTime)),
         booked: true,
         location: loc.name, // Add location name to booked events
+        bookedBy: avail.bookedBy, // Add bookedBy for ownership check
       }))
     );
 
@@ -295,7 +323,7 @@ export default function CalendarPage() {
     setAvailability(availableSlots.length > 0 ? availableSlots : []);
   };
 
-  const handleCreateReservation = async (locationId: string, slot: any) => {
+  const handleCreateReservation = async (slot: any) => {
     const token = getToken();
     if (!token) {
       setLoading(false);
@@ -304,27 +332,44 @@ export default function CalendarPage() {
     }
 
     try {
-      console.log("Attempting to create reservation with:", {
-        locationId,
-        slot,
-        selectedSite,
-        startDateTime: slot.start.toISOString(),
-        endDateTime: slot.end.toISOString(),
-      });
-
-      const response = await axios.post(
-        `http://localhost:5000/sites/${selectedSite}/locations/${locationId}/availability`,
-        {
-          startDateTime: slot.start.toISOString(), // Use local time, but ISO will include local offset
-          endDateTime: slot.end.toISOString(), // Use local time, but ISO will include local offset
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+      // Filter out empty or invalid location IDs
+      const validLocationIds = selectedLocationIds.filter(
+        (id) => id && id !== ""
       );
 
-      console.log("Reservation created successfully:", response.data);
-      alert("Reservation created successfully!");
+      if (validLocationIds.length === 0) {
+        throw new Error("No valid locations selected for reservation.");
+      }
+
+      // Book the slot for all selected locations
+      for (const locationId of validLocationIds) {
+        console.log(
+          `Attempting to create reservation for location ${locationId} with:`,
+          {
+            slot,
+            selectedSite,
+            startDateTime: slot.start.toISOString(),
+            endDateTime: slot.end.toISOString(),
+          }
+        );
+
+        await axios.post(
+          `http://localhost:5000/sites/${selectedSite}/locations/${locationId}/availability`,
+          {
+            startDateTime: slot.start.toISOString(), // Use local time, but ISO will include local offset
+            endDateTime: slot.end.toISOString(), // Use local time, but ISO will include local offset
+          },
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+      }
+
+      console.log(
+        "Reservations created successfully for all selected locations:",
+        validLocationIds
+      );
+      alert("Reservations created successfully for all selected locations!");
       const siteResponse = await axios.get(
         `http://localhost:5000/sites/${selectedSite}`,
         {
@@ -341,21 +386,93 @@ export default function CalendarPage() {
       );
       setIsReservationDialogOpen(false); // Close dialog after reservation
     } catch (error: any) {
-      console.error("Error creating reservation:", error);
+      console.error("Error creating reservations:", error);
       alert(
         error.response?.data?.message ||
-          "Failed to create reservation. Please check your input or server status."
+          "Failed to create reservations. Please check your input or server status."
       );
     }
   };
 
   const handleEventClick = (event: any) => {
+    console.log("EVENT", event.bookedBy); // Fixed typo from bookedyBy to bookedBy
     if (!event.booked) {
       console.log("Selected slot for reservation:", event);
       setSelectedSlot(event);
       setIsReservationDialogOpen(true);
+    } else if (
+      event.booked &&
+      currentUserId &&
+      event.bookedBy === currentUserId
+    ) {
+      console.log("Selected own booked slot for deletion:", event);
+      setSelectedBookingToDelete(event); // Set the booking to delete and open the dialog
+      setIsDeleteDialogOpen(true);
     } else {
-      console.log("Cannot select booked slot:", event);
+      console.log(
+        "Cannot select or delete this booked slot: not owned by current user",
+        event,
+        currentUserId
+      );
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (selectedBookingToDelete && selectedBookingToDelete.id) {
+      const location = locations.find((loc) =>
+        loc.availability.some((a) => a._id === selectedBookingToDelete.id)
+      );
+      if (location) {
+        await handleDeleteReservation(
+          location._id,
+          selectedBookingToDelete.id as string
+        );
+        setIsDeleteDialogOpen(false); // Close dialog after deletion
+        setSelectedBookingToDelete(null); // Clear the selected booking
+      }
+    }
+  };
+
+  const handleDeleteReservation = async (
+    locationId: string,
+    availabilityId: string
+  ) => {
+    const token = getToken();
+    if (!token) {
+      setLoading(false);
+      navigate("/login");
+      return;
+    }
+
+    try {
+      await axios.delete(
+        `http://localhost:5000/sites/${selectedSite}/locations/${locationId}/availability/${availabilityId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      console.log(
+        "Reservation deleted successfully for availabilityId:",
+        availabilityId
+      );
+      alert("Your reservation has been deleted successfully!");
+      const response = await axios.get(
+        `http://localhost:5000/sites/${selectedSite}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      setLocations(response.data.locations || []);
+      calculateAvailability(
+        response.data.locations.filter((loc: any) =>
+          selectedLocationIds.includes(loc._id)
+        ),
+        sessionDuration,
+        parseISO(selectedDate) // Use local time
+      );
+    } catch (error: any) {
+      console.error("Error deleting reservation:", error);
+      alert(error.response?.data?.message || "Failed to delete reservation.");
     }
   };
 
@@ -464,10 +581,13 @@ export default function CalendarPage() {
           ...locations.flatMap((loc) =>
             loc.availability.map((avail) => ({
               id: avail._id,
-              title: `Booked by ${avail.bookedBy} at ${loc.name}`,
+              title: `Booked by ${currentUserName || "Unknown User"} at ${
+                loc.name
+              }`, // Use currentUserName for booked events
               start: roundTo15Minutes(new Date(avail.startDateTime)),
               end: roundTo15Minutes(new Date(avail.endDateTime)),
               booked: true,
+              bookedBy: avail.bookedBy,
             }))
           ),
           ...availability.map((slot) => ({
@@ -494,7 +614,7 @@ export default function CalendarPage() {
             padding: "2px",
             fontSize: "12px",
             width: "100%",
-            cursor: event.booked ? "default" : "pointer", // Cursor pointer for available slots
+            cursor: event.booked ? "pointer" : "pointer", // Cursor pointer for both booked and available slots
           },
         })}
         onSelectEvent={handleEventClick}
@@ -553,21 +673,19 @@ export default function CalendarPage() {
           event: (props) => (
             <div className="p-1 flex flex-col justify-between h-full w-full">
               <span>{props.event.title}</span>
-              {props.event.booked && (
-                <button
-                  onClick={() =>
-                    handleDeleteReservation(
-                      locations.find((loc) =>
-                        loc.availability.some((a) => a._id === props.event.id)
-                      )!._id,
-                      props.event.id as string
-                    )
-                  }
-                  className="bg-red-500 text-white px-2 py-1 rounded-md text-xs hover:bg-red-600 mt-auto w-full"
-                >
-                  Delete
-                </button>
-              )}
+              {props.event.booked &&
+                currentUserId &&
+                props.event.bookedBy === currentUserId && (
+                  <button
+                    onClick={() => {
+                      setSelectedBookingToDelete(props.event); // Set the booking to delete and open the dialog
+                      setIsDeleteDialogOpen(true);
+                    }}
+                    className="bg-red-500 text-white px-2 py-1 rounded-md text-xs hover:bg-red-600 mt-auto w-full"
+                  >
+                    Delete
+                  </button>
+                )}
             </div>
           ),
         }}
@@ -603,15 +721,10 @@ export default function CalendarPage() {
             </Button>
             <Button
               onClick={() => {
-                if (selectedSlot && selectedLocationIds[0]) {
-                  console.log("Confirm clicked, attempting reservation with:", {
-                    locationId: selectedLocationIds[0],
-                    slot: selectedSlot,
-                  });
-                  handleCreateReservation(selectedLocationIds[0], selectedSlot);
-                } else {
-                  console.error("No selected slot or location ID");
-                }
+                console.log("Confirm clicked, attempting reservation with:", {
+                  slot: selectedSlot,
+                });
+                handleCreateReservation(selectedSlot);
               }}
               className="bg-green-500 text-white hover:bg-green-600"
             >
@@ -620,45 +733,49 @@ export default function CalendarPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Deletion Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="bg-gray-800 text-white p-6 rounded-lg shadow-lg max-w-md w-full fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold">
+              Confirm Delete Reservation
+            </h2>
+          </div>
+          {selectedBookingToDelete && (
+            <p className="mb-4">
+              Are you sure you want to delete the reservation for{" "}
+              {selectedBookingToDelete.title} at{" "}
+              {format(selectedBookingToDelete.start, "h:mm a")} -{" "}
+              {format(selectedBookingToDelete.end, "h:mm a")}?
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button
+              onClick={() => {
+                console.log("Cancel deletion, closing dialog");
+                setIsDeleteDialogOpen(false);
+                setSelectedBookingToDelete(null); // Clear the selected booking
+              }}
+              className="bg-blue-500 text-white hover:bg-blue-600"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                console.log(
+                  "Confirm deletion clicked for:",
+                  selectedBookingToDelete
+                );
+                handleConfirmDelete();
+              }}
+              className="bg-red-500 text-white hover:bg-red-600"
+            >
+              Confirm Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
-
-  async function handleDeleteReservation(
-    locationId: string,
-    availabilityId: string
-  ) {
-    const token = getToken();
-    if (!token) {
-      setLoading(false);
-      navigate("/login");
-      return;
-    }
-
-    try {
-      await axios.delete(
-        `http://localhost:5000/sites/${selectedSite}/locations/${locationId}/availability/${availabilityId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      alert("Reservation deleted successfully!");
-      const response = await axios.get(
-        `http://localhost:5000/sites/${selectedSite}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      setLocations(response.data.locations || []);
-      calculateAvailability(
-        response.data.locations.filter((loc: any) =>
-          selectedLocationIds.includes(loc._id)
-        ),
-        sessionDuration,
-        parseISO(selectedDate) // Use local time
-      );
-    } catch (error: any) {
-      console.error("Error deleting reservation:", error);
-      alert(error.response?.data?.message || "Failed to delete reservation.");
-    }
-  }
 }

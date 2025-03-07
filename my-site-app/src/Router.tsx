@@ -11,6 +11,8 @@ import UserList from "./components/Users/UserList";
 import UserDetails from "./components/Users/UserDetails";
 import SiteDetails from "./components/SiteDetails";
 import CalendarPage from "./components/Calendar/CalendarPage";
+import UserCourseRegistrationPage from "./components/Users/UserCourseRegistrationPage";
+import Scheduler from "./components/Schedule/Scheduler";
 
 export const router = createBrowserRouter([
   {
@@ -26,7 +28,9 @@ export const router = createBrowserRouter([
       { path: "/Courses/Update/:courseId", element: <UpdateCourse /> },
       { path: "/users", element: <UserList /> },
       { path: "/users/:userId", element: <UserDetails /> },
-      { path: "/calendar/:siteId", element: <CalendarPage /> },
+      { path: "/calendar", element: <CalendarPage /> },
+      { path: "/users/registration", element: <UserCourseRegistrationPage /> },
+      { path: "/schedule", element: <Scheduler /> },
     ],
   },
 ]);

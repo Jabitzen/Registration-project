@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
     required: true,
   },
   createdAt: { type: Date, default: Date.now },
+  registeredCourses: [{ type: mongoose.Schema.Types.ObjectId, ref: "Course" }],
 });
 
 module.exports = mongoose.model("User", userSchema);

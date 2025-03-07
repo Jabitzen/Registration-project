@@ -14,7 +14,16 @@ router.get("/", async (req, res) => {
     res.status(500).json({ message: "Error fetching sites", error });
   }
 });
-
+// Get all locations
+router.get("/locations", authMiddleware, async (req, res) => {
+  try {
+    const locations = await Location.find().populate("availability"); // Optionally populate availability if needed, similar to your site route
+    res.json(locations);
+  } catch (error) {
+    console.error("Error fetching locations:", error);
+    res.status(500).json({ message: "Error fetching locations", error });
+  }
+});
 // Add a location to a site (no default availability)
 router.post("/:siteId/locations", async (req, res) => {
   const { siteId } = req.params;
@@ -91,7 +100,7 @@ router.post(
       }
 
       // Get user name from req.user (set by authMiddleware)
-      const userName = req.user?.username || "Unknown User";
+      const id = req.user?.id || "Unknown User";
 
       // Create the reservation (booked slot) directly
       const reservationData = {
@@ -99,7 +108,7 @@ router.post(
         startDateTime: start.toISOString(),
         endDateTime: end.toISOString(),
         status: "booked",
-        bookedBy: userName,
+        bookedBy: id,
       };
       const reservation = new Availability(reservationData);
       await reservation.save();
@@ -118,10 +127,12 @@ router.post(
 // Get a single site by _id
 router.get("/:id", async (req, res) => {
   try {
+    // Fetch the site with its locations populated
     const site = await Site.findOne({ _id: req.params.id }).populate({
       path: "locations",
       populate: { path: "availability" },
     });
+
     if (!site) {
       return res.status(404).json({ message: "Site not found" });
     }

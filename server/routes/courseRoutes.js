@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Course = require("../models/Course");
-const User = require("../models/User"); // Adjust path to your User model
+const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 
 require("dotenv").config();
@@ -29,6 +29,7 @@ router.post("/:courseId/register", authMiddleware, async (req, res) => {
     // Find the course
     const findCourse = await Course.find({ _id: req.params.courseId });
     const course = findCourse[0];
+    const user = await User.find({ _id: userId });
     if (!course) return res.status(404).json({ message: "Course not found" });
 
     // Check if user is already registered
@@ -48,6 +49,9 @@ router.post("/:courseId/register", authMiddleware, async (req, res) => {
     course.RegisteredUsers.push(userId);
     course.TotalRegistered = course.RegisteredUsers.length.toString();
     await course.save();
+
+    user.RegisteredCourses.push(req.params.courseId);
+    await user.save();
 
     res.status(200).json({ message: "Successfully registered for the course" });
   } catch (error) {
